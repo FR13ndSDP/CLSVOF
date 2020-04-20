@@ -5,8 +5,7 @@
     \\  /    A nd           | www.openfoam.com
      \\/     M anipulation  |
 -------------------------------------------------------------------------------
-    Copyright (C) 2011 OpenFOAM Foundation
-    Copyright (C) 2016 OpenCFD Ltd.
+    Copyright (C) 2011-2017 OpenFOAM Foundation
 -------------------------------------------------------------------------------
 License
     This file is part of OpenFOAM.
@@ -25,27 +24,32 @@ License
     along with OpenFOAM.  If not, see <http://www.gnu.org/licenses/>.
 
 Global
-    continuityErrs
+    setDeltaT
 
 Description
-    Calculates and prints the continuity errors.
+    Reset the timestep to maintain a constant maximum courant Number.
+    Reduction of time-step is immediate, but increase is damped to avoid
+    unstable oscillations.
 
 \*---------------------------------------------------------------------------*/
 
+if (adjustTimeStep)
 {
-    volScalarField contErr(interpolatedCells*cellMask*fvc::div(phi));
+    scalar maxDeltaTFact =
+        min(maxCo/(CoNum + SMALL), maxAlphaCo/(alphaCoNum + SMALL));
 
-    scalar sumLocalContErr = runTime.deltaTValue()*
-        mag(contErr)().weightedAverage(mesh.V()).value();
+    scalar deltaTFact = min(min(maxDeltaTFact, 1.0 + 0.1*maxDeltaTFact), 1.2);
 
-    scalar globalContErr = runTime.deltaTValue()*
-        contErr.weightedAverage(mesh.V()).value();
-    cumulativeContErr += globalContErr;
+    runTime.setDeltaT
+    (
+        min
+        (
+            deltaTFact*runTime.deltaTValue(),
+            maxDeltaT
+        )
+    );
 
-    Info<< "time step continuity errors : sum local = " << sumLocalContErr
-        << ", global = " << globalContErr
-        << ", cumulative = " << cumulativeContErr
-        << endl;
+    Info<< "deltaT = " <<  runTime.deltaTValue() << endl;
 }
 
 // ************************************************************************* //

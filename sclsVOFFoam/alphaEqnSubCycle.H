@@ -10,7 +10,7 @@ if (nAlphaSubCycles > 1)
             mesh
         ),
         mesh,
-        dimensionedScalar(rhoPhi.dimensions(), Zero)
+        dimensionedScalar("0", rhoPhi.dimensions(), 0)
     );
 
     for
@@ -29,13 +29,4 @@ else
 {
     #include "alphaEqn.H"
 }
-
-{
-    volScalarField rhoNew(alpha1*rho1 + alpha2*rho2 + alpha3*rho3);
-
-    //solve(fvm::ddt(rho) + fvc::div(rhoPhi));
-    //Info<< "density error = "
-    //    << max((mag(rho - rhoNew)/mag(rhoNew))().primitiveField()) << endl;
-
-    rho == rhoNew;
-}
+rho == alpha1*rho1 + alpha2*rho2;
