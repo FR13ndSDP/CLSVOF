@@ -1,5 +1,81 @@
 #include "createRDeltaT.H"
 
+//NOTE:定义LS的变量
+Info<< "Reading field psi\n" << endl;
+volScalarField psi
+(
+    IOobject
+    (
+        "psi",
+        runTime.timeName(),
+        mesh,
+        IOobject::MUST_READ,
+        IOobject::AUTO_WRITE
+    ),
+    mesh
+); 
+
+Info<< "Reading field psi0\n" << endl;
+volScalarField psi0
+(
+    IOobject
+    (
+        "psi0",
+        runTime.timeName(),
+        mesh,
+        IOobject::NO_READ,
+        IOobject::AUTO_WRITE
+    ),
+    psi//mesh,
+    //dimensionedScalar("psi0",dimless, 0.0)
+);
+
+Info<< "Reading field delta\n" << endl;
+volScalarField delta
+(
+    IOobject
+    (
+        "delta",
+        runTime.timeName(),
+        mesh,
+        IOobject::NO_READ,
+        IOobject::AUTO_WRITE
+    ),
+    mesh,
+    dimensionedScalar("delta",dimless, 0.0)
+);
+
+Info<< "Reading field H\n" << endl;
+volScalarField H
+(
+    IOobject
+    (
+        "H",
+        runTime.timeName(),
+        mesh,
+        IOobject::NO_READ,
+        IOobject::AUTO_WRITE
+    ),
+    mesh,
+    dimensionedScalar("H",dimless, 0.0)
+);
+H.oldTime();
+
+volScalarField C
+(
+    IOobject
+    (
+        "C",
+        runTime.timeName(),
+        mesh,
+        IOobject::NO_READ,
+        IOobject::AUTO_WRITE
+    ),
+    mesh,
+    dimensionedScalar("C",dimless/dimLength, 0.0)
+);
+//NOTE:LS变量声明结束
+
 Info<< "Reading field p_rgh\n" << endl;
 volScalarField p_rgh
 (
@@ -70,6 +146,19 @@ surfaceScalarField rhoPhi
     fvc::interpolate(rho)*phi
 );
 
+//TODO:一个不清楚的变量
+surfaceScalarField rhoPhiH
+(
+    IOobject
+    (
+        "rhoPhiH",
+        runTime.timeName(),
+        mesh,
+        IOobject::NO_READ,
+        IOobject::NO_WRITE
+    ),
+    fvc::interpolate(rho)*phi
+);
 
 // Construct incompressible turbulence model
 autoPtr<incompressible::turbulenceModel> turbulence
@@ -79,7 +168,7 @@ autoPtr<incompressible::turbulenceModel> turbulence
 
 
 #include "readGravitationalAcceleration.H"
-#include "readhRef.H"
+#include "readhRef.H" // 参比高度(optional)
 #include "gh.H"
 
 
@@ -135,6 +224,41 @@ surfaceScalarField alphaPhiUn
     mesh,
     dimensionedScalar(phi.dimensions(), Zero)
 );
+
+//NOTE:读取一些常量
+IOdictionary transportProperties
+(
+    IOobject
+    (
+        "transportProperties",
+        runTime.constant(),
+        mesh,
+        IOobject::MUST_READ_IF_MODIFIED,
+        IOobject::NO_WRITE
+    )
+);
+
+dimensionedScalar deltaX("deltaX", dimless, transportProperties);
+
+dimensionedScalar gamma = deltaX * 0.75;
+
+dimensionedScalar deltaTau = deltaX * 0.1;
+
+// dimensionedScalar(deltaX*1.5)
+dimensionedScalar epsilon("epsilon", dimless, transportProperties);
+
+dimensionedScalar dimChange("dimChange",dimLength, 1.0);
+
+dimensionedScalar sigma("sigma", dimensionSet (1, 0, -2, 0, 0, 0, 0), transportProperties);
+
+dimensionedScalar nu1("nu", dimViscosity, transportProperties.subDict("water"));
+/* (
+    transportProperties.subDict("water").lookup("nu")
+); */
+dimensionedScalar nu2("nu", dimViscosity, transportProperties.subDict("air"));
+/* (
+    transportProperties.subDict("air").lookup("nu")
+); */
 
 #include "createMRF.H"
 #include "createFvOptions.H"
