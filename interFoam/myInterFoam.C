@@ -38,6 +38,7 @@ Description
 \*---------------------------------------------------------------------------*/
 
 #include "fvCFD.H"
+#include "dynamicFvMesh.H"
 #include "CMULES.H"
 #include "EulerDdtScheme.H"
 #include "localEulerDdtScheme.H"
@@ -56,7 +57,10 @@ int main(int argc, char *argv[])
 {
     argList::addNote
     (
-        "瞎搞的interFoam"
+        "Solver for two incompressible, isothermal immiscible fluids"
+        " using VOF phase-fraction based interface capturing.\n"
+        "With optional mesh motion and mesh topology changes including"
+        " adaptive re-meshing."
     );
 
     #include "postProcess.H"
@@ -64,33 +68,30 @@ int main(int argc, char *argv[])
     #include "addCheckCaseOptions.H"
     #include "setRootCaseLists.H"
     #include "createTime.H"
-    #include "createMesh.H"
-    #include "createControl.H"
-    #include "createTimeControls.H"
+    #include "createDynamicFvMesh.H"
     #include "initContinuityErrs.H"
+    #include "createDyMControls.H"
     #include "createFields.H"
     #include "createAlphaFluxes.H"
-    #include "mycorrectPhi.H"
+    #include "initCorrectPhi.H"
+    #include "createUfIfPresent.H"
 
     turbulence->validate();
 
     if (!LTS)
     {
-        #include "readTimeControls.H"
         #include "CourantNo.H"
         #include "setInitialDeltaT.H"
     }
 
-    #include "mappingPsi.H"
     #include "solveLSFunction.H"
-    #include "calcNewCurvature.H"
 
-    //NOTE: 验证质量守恒
+    // 质量守恒验证
     autoPtr<OFstream> massFilePtr;
-
-    scalar totalMass = 1;
+    
+    scalar totalMass  = 1;
     scalar totalMass0 = 1;
-    const scalarField& V = mesh.V();
+    const scalarField& V = mesh.V() ;
     totalMass0 = gSum(rho*V);
 
     // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
@@ -98,7 +99,7 @@ int main(int argc, char *argv[])
 
     while (runTime.run())
     {
-        #include "readTimeControls.H"
+        #include "readDyMControls.H"
 
         if (LTS)
         {
@@ -120,6 +121,45 @@ int main(int argc, char *argv[])
         // --- Pressure-velocity PIMPLE corrector loop
         while (pimple.loop())
         {
+            if (pimple.firstIter() || moveMeshOuterCorrectors)
+            {
+                mesh.update();
+
+                if (mesh.changing())
+                {
+                    // Do not apply previous time-step mesh compression flux
+                    // if the mesh topology changed
+                    if (mesh.topoChanging())
+                    {
+                        talphaPhi1Corr0.clear();
+                    }
+
+                    gh = (g & mesh.C()) - ghRef;
+                    ghf = (g & mesh.Cf()) - ghRef;
+
+                    MRF.update();
+
+                    if (correctPhi)
+                    {
+                        // Calculate absolute flux
+                        // from the mapped surface velocity
+                        phi = mesh.Sf() & Uf();
+
+                        #include "mycorrectPhi.H"
+
+                        // Make the flux relative to the mesh motion
+                        fvc::makeRelative(phi, U);
+
+                        mixture.correct();
+                    }
+
+                    if (checkMeshCourantNo)
+                    {
+                        #include "meshCourantNo.H"
+                    }
+                }
+            }
+
             #include "alphaControls.H"
             #include "alphaEqnSubCycle.H"
 
@@ -130,9 +170,7 @@ int main(int argc, char *argv[])
                 continue;
             }
 
-            #include "mappingPsi.H"
             #include "solveLSFunction.H"
-            #include "calcNewCurvature.H"
             #include "updateFlux.H"
 
             #include "UEqn.H"
@@ -149,20 +187,44 @@ int main(int argc, char *argv[])
             }
         }
 
-        // reInitialise the alpha equation 
-        if (runTime.outputTime())
-        {
+// 重初始化alpha 
+	    if (runTime.writeTime())
+	    {
             Info<<"Overwriting alpha" << nl << endl;
             alpha1 = H;
-            volScalarField& alpha10 = const_cast<volScalarField&>(alpha1.oldTime());
+                volScalarField& alpha10 = const_cast<volScalarField&>(alpha1.oldTime());
             alpha10 = H.oldTime();
             //const_cast<volScalarField&>(alpha1.storeOldTime()()) = H.oldTime();
-        }
+	    }
 
         runTime.write();
 
-        #include "writeMass.H"
 
+// 输出 totalMass.dat
+        const scalarField& V = mesh.V() ;
+        totalMass = gSum(rho*V)/totalMass0;
+        
+        // Create the residual file if not already created
+        if (massFilePtr.empty())
+        {
+        Info<< "Creating mass file." << endl;
+
+            // File update
+            if (Pstream::master())
+            {
+                fileName totalMass;
+            word name_ = "totalMass";
+            
+            // Open new file at start up
+            massFilePtr.reset(new OFstream("totalMass.dat"));
+        }
+        }
+        
+        if (Pstream::master())
+        {
+        massFilePtr() << runTime.timeName() << tab << totalMass << endl;
+        }
+// 运行信息
         runTime.printExecutionTime(Info);
     }
 

@@ -1,22 +1,83 @@
-//NOTE: 更新通量
 {
     word alphaScheme("div(phi,alpha)");
     word alpharScheme("div(phirb,alpha)");
 
-    surfaceScalarField phic(mag(phi/mesh.magSf()));
-    //surfaceScalarField phic(mixture.cAlpha()*mag(phi/mesh.magSf()));
+    // Set the off-centering coefficient according to ddt scheme
+    scalar ocCoeff = 0;
+    {
+        tmp<fv::ddtScheme<scalar>> tddtAlpha
+        (
+            fv::ddtScheme<scalar>::New
+            (
+                mesh,
+                mesh.ddtScheme("ddt(alpha)")
+            )
+        );
+        const fv::ddtScheme<scalar>& ddtAlpha = tddtAlpha();
+
+        if
+        (
+            isType<fv::EulerDdtScheme<scalar>>(ddtAlpha)
+         || isType<fv::localEulerDdtScheme<scalar>>(ddtAlpha)
+        )
+        {
+            ocCoeff = 0;
+        }
+        else if (isType<fv::CrankNicolsonDdtScheme<scalar>>(ddtAlpha))
+        {
+            if (nAlphaSubCycles > 1)
+            {
+                FatalErrorInFunction
+                    << "Sub-cycling is not supported "
+                       "with the CrankNicolson ddt scheme"
+                    << exit(FatalError);
+            }
+
+            if
+            (
+                alphaRestart
+             || mesh.time().timeIndex() > mesh.time().startTimeIndex() + 1
+            )
+            {
+                ocCoeff =
+                    refCast<const fv::CrankNicolsonDdtScheme<scalar>>(ddtAlpha)
+                   .ocCoeff();
+            }
+        }
+        else
+        {
+            FatalErrorInFunction
+                << "Only Euler and CrankNicolson ddt schemes are supported"
+                << exit(FatalError);
+        }
+    }
+
+    // Set the time blending factor, 1 for Euler
+    scalar cnCoeff = 1.0/(1.0 + ocCoeff);
+
+    // Standard face-flux compression coefficient
+    surfaceScalarField phic(mixture.cAlpha()*mag(phi/mesh.magSf()));
 
     // Add the optional isotropic compression contribution
-    // if (icAlpha > 0)
-    // {
-    //     phic *= (1.0 - icAlpha);
-    //     phic += (mixture.cAlpha()*icAlpha)*fvc::interpolate(mag(U));
-    // }
+    if (icAlpha > 0)
+    {
+        phic *= (1.0 - icAlpha);
+        phic += (mixture.cAlpha()*icAlpha)*fvc::interpolate(mag(U));
+    }
+
+    // Add the optional shear compression contribution
+    if (scAlpha > 0)
+    {
+        phic +=
+            scAlpha*mag(mesh.delta() & fvc::interpolate(symm(fvc::grad(U))));
+    }
+
+
+    surfaceScalarField::Boundary& phicBf =
+        phic.boundaryFieldRef();
 
     // Do not compress interface at non-coupled boundary faces
     // (inlets, outlets etc.)
-    surfaceScalarField::Boundary& phicBf = phic.boundaryFieldRef();
-    
     forAll(phic.boundaryField(), patchi)
     {
         fvsPatchScalarField& phicp = phicBf[patchi];
@@ -28,9 +89,16 @@
     }
 
     tmp<surfaceScalarField> phiCN(phi);
-//2.3
-    //  phic = min(mixture.cAlpha()*phic, max(phic));
-//  surfaceScalarField phir(phic*interface.nHatf());
+
+    // Calculate the Crank-Nicolson off-centred volumetric flux
+    if (ocCoeff > 0)
+    {
+        phiCN = cnCoeff*phi + (1.0 - cnCoeff)*phi.oldTime();
+    }
+
+
+    #include "alphaSuSp.H"
+
     surfaceScalarField phir(phic*nVecf);
 
     surfaceScalarField phiH
@@ -38,21 +106,18 @@
         fvc::flux
         (
             phiCN(),
-            H,//alpha1,
+            cnCoeff*H + (1.0 - cnCoeff)*H.oldTime(),
             alphaScheme
         )
-      + fvc::flux
+        + fvc::flux
         (
-            -fvc::flux(-phir, scalar(1) - H, alpharScheme),
-            H,//alpha1, 
+            -fvc::flux(-phir, scalar(1)-H, alpharScheme),
+            H,
             alpharScheme
         )
     );
 
 
-    //MULES::explicitSolve(alpha1, phi, phiAlpha, 1, 0);
-   /*  MULES::explicitSolve(rho, H, phi, phiH, 1.0, 0.0); */
-    #include "alphaSuSp.H"
     MULES::explicitSolve
     (
         geometricOneField(),
@@ -64,6 +129,6 @@
         oneField(),
         zeroField()
     );
-    
-    rhoPhiH = phiH*(rho1 - rho2) + phi*rho2;
+
+    rhoPhiH = phiH*(rho1-rho2)+phi*rho2;
 }
