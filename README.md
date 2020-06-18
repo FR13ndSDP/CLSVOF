@@ -107,7 +107,7 @@ $$
 
 ## 流程图[^6]
 
-![](C:\Users\Feynman\Desktop\Coding\flow.png)
+![flow](https://user-images.githubusercontent.com/39750942/85037302-c0cccc00-b1b7-11ea-8a24-f1631e1b2544.png)
 
 
 
@@ -118,10 +118,15 @@ $$
 
 
 [^1]: H. G. Weller, “A new approach to vof-based interface capturing methods for incompressible andcompressible flows,” Tech. Rep. TR/HGW/04, 2008.
+
 [^2]: S. T. Zalesak, “Fully multidimensional flux-corrected transport algorithms for fluids,”Journalof Computational Physics, vol. 31, no. 3, pp. 335 – 362, 1979.
+
 [^3]: S. Osher and J. A. Sethian, “Fronts propagating with curvature-dependent speed:  Algorithmsbased on hamilton-jacobi formulations,”Journal of Computational Physics, vol. 79, no. 1, pp. 12– 49, 1988.
+
 [^4]: M.  Sussman,  P.  Smereka,  and  S.  Osher,  “A  level  set  approach  for  computing  solutions  to  in-compressible two-phase flow,”Journal of Computational physics, vol. 114, no. 1, pp. 146–159,1994.
+
 [^5]: A.  Albadawi,  D.  Donoghue,  A.  Robinson,  D.  Murray,  and  Y.  Delaur ́e,  “Influence  of  surfacetension implementation in volume of fluid and coupled volume of fluid with level set methodsfor bubble growth and detachment,”International Journal of Multiphase Flow, vol. 53, no. 0,pp. 11 – 28, 2013
+
 [^6]: CLSVOFsf和CLSVOF的区别在后者在进入主循环前除了更新表面张力，还更新粘度和密度
 
 [^7]: RoenbyJ,BredmoseH,Jasak H.2016Acomputationalmethodforsharp interfaceadvection.R.Soc.opensci.3:160405. http://dx.doi.org/10.1098/rsos.160405
